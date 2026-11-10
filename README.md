@@ -1,4 +1,6 @@
-# Discord-Games-Simulator
+<img width="369" height="242" alt="-5449814449654012727_120" src="https://github.com/user-attachments/assets/7c61a519-ccfa-41a0-b384-3eb7dae17fb7" />
+
+Discord-Games-Simulator
 Экспериментальная имитация запуска 100 игр для значка «Универсал». Игры скачивать не нужно.
 
 Возможности:
