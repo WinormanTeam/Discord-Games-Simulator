@@ -101,7 +101,9 @@ internal static class Placeholder
                 label.AutoEllipsis = true;
                 form.Controls.Add(label);
 
-                using (Timer timer = new Timer())
+                // Обязательно полное имя: System.Threading.Timer и
+                // System.Windows.Forms.Timer одновременно в области видимости.
+                using (System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer())
                 {
                     timer.Interval = seconds * 1000;
                     timer.Tick += delegate { form.Close(); };
