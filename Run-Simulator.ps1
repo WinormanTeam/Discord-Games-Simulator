@@ -66,6 +66,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+# Пути объявляются ДО любого использования: под Set-StrictMode чтение
+# неинициализированной переменной — это исключение, а не $null.
+$script:Root = Join-Path $PSScriptRoot 'simulator-data'
+$script:LibDir = Join-Path $PSScriptRoot 'lib'
+$script:HistoryPath = Join-Path $script:Root 'history.csv'
+
 # Версия заглушки: смена версии заставляет пересобрать exe после обновления.
 $script:PlaceholderVersion = '4'
 $script:CatalogApi = 'https://discord.com/api/v9/applications/detectable'
@@ -73,14 +79,6 @@ $script:DiscordCheckIntervalSeconds = 5
 # Инициализируется в Initialize-RunEnvironment; заранее объявлено для StrictMode.
 $script:LogPath = $null
 $script:CsvEncoding = 'UTF8'
-$script:HistoryPath = Join-Path $script:Root 'history.csv'
-
-# ---------------------------------------------------------------------------
-# Инфраструктура: пути, журнал, единый экземпляр
-# ---------------------------------------------------------------------------
-
-$script:Root = Join-Path $PSScriptRoot 'simulator-data'
-$script:LibDir = Join-Path $PSScriptRoot 'lib'
 
 function Write-Log {
     <#
@@ -713,7 +711,6 @@ try {
     }
     $Messages = Initialize-SimulatorMessages -Language $Language
     $script:CsvEncoding = if ($PSVersionTable.PSVersion.Major -ge 6) { 'utf8BOM' } else { 'UTF8' }
-    $script:HistoryPath = Join-Path $script:Root 'history.csv'
 
     # Меню в цикле, чтобы после прогона можно было выбрать другой режим.
     while ($Menu) {
