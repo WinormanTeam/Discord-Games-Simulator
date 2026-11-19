@@ -1,0 +1,199 @@
+name: Analyze & Test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  pester:
+    name: Pester (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Ubuntu — быстрый контур, Windows — среда, близкая к целевой.
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: Run unit tests
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = './tests'
+          $config.Output.Verbosity = 'Detailed'
+          $config.Run.Exit = $true
+          Invoke-Pester -Configuration $config
+
+  analyze:
+    name: PSScriptAnalyzer + parser
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: Analyze
+        run: |
+          # Предупреждения печатаем и складываем в summary, но блокируем PR
+          # только на ошибках: стилевые замечания не должны останавливать работу.
+          $warnings = @(Invoke-ScriptAnalyzer -Path . -Recurse `
+              -Settings ./PSScriptAnalyzerSettings.psd1 `
+              -Severity Warning)
+
+          # Печатаем всё в лог: без этого невозможно понять, что именно чинить.
+          $warnings |
+            Select-Object RuleName, Severity, Line, Column, Message, ScriptName |
+            Sort-Object ScriptName, Line |
+            Format-Table -AutoSize -Wrap |
+            Out-String -Width 200 |
+            Write-Host
+
+          # И в Job Summary, чтобы отчёт был виден прямо в PR.
+          $summary = "`n### PSScriptAnalyzer: $($warnings.Count) замечаний`n`n" +
+            (($warnings | Group-Object RuleName |
+              ForEach-Object { "- **$($_.Name)** — $($_.Count)" }) -join "`n")
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
+
+          # Блокирующий гейт — только ошибки уровня Error.
+          $errors = @(Invoke-ScriptAnalyzer -Path . -Recurse `
+              -Settings ./PSScriptAnalyzerSettings.psd1 `
+              -Severity Error)
+          foreach ($e in $errors) {
+            Write-Host ("::error file={0},line={1},col={2}::{3} ({4})" -f `
+                $e.ScriptName, $e.Line, $e.Column, $e.Message, $e.RuleName)
+          }
+          Write-Host "Ошибок: $($errors.Count); предупреждений: $($warnings.Count)"
+          if ($errors.Count -gt 0) { exit 1 }
+
+      - name: Encoding check (UTF-8 BOM required)
+        run: |
+          # Windows PowerShell 5.1 читает .ps1 без BOM как ANSI (Windows-1251),
+          # из-за чего кириллица ломает парсинг. BOM обязателен.
+          $failed = 0
+          $files = Get-ChildItem -Path . -Recurse -Include *.ps1, *.psm1, *.psd1 |
+            Where-Object { $_.FullName -notlike '*\node_modules\*' }
+          foreach ($file in $files) {
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+            if (-not $hasBom) {
+              $failed++
+              Write-Host "::error file=$($file.FullName)::Файл .ps1/.psd1 без UTF-8 BOM"
+            }
+          }
+          Write-Host "Проверено файлов: $($files.Count)"
+          if ($failed -gt 0) { exit 1 }
+
+      - name: Syntax check (native parser)
+        run: |
+          $failed = 0
+          $files = Get-ChildItem -Path . -Recurse -Include *.ps1, *.psm1 |
+            Where-Object { $_.FullName -notlike '*\node_modules\*' }
+          foreach ($file in $files) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $file.FullName, [ref]$null, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $failed++
+              Write-Host ("::error file={0}::{1}" -f $file.FullName, $errors[0].Message)
+            }
+          }
+          if ($failed -gt 0) { exit 1 }
+          Write-Host "Проверено файлов: $($files.Count)"
+
+  smoke:
+    name: Smoke test (-PrepareOnly)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare files only (windows are NOT launched)
+        timeout-minutes: 5
+        run: |
+          # Smoke-тест гоняем ТЕМ ЖЕ движком, что и пользователь (5.1),
+          # иначе проверяем не ту среду: Add-Type -OutputType в pwsh 7 не работает.
+          $ErrorActionPreference = 'Continue'
+          Write-Host "pwsh: $($PSVersionTable.PSVersion)"
+
+          $diag = Join-Path $PWD 'smoke-diag.txt'
+          $lines = New-Object System.Collections.Generic.List[string]
+          $lines.Add("pwsh: $($PSVersionTable.PSVersion)")
+
+          $legacy = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          if (-not (Test-Path -LiteralPath $legacy)) {
+            Write-Host '::error::Windows PowerShell 5.1 не найден на раннере'
+            exit 1
+          }
+
+          $scriptPath = Join-Path $PWD 'Run-Simulator.ps1'
+          Write-Host "Script exists: $(Test-Path -LiteralPath $scriptPath)"
+
+          # Захватываем все потоки: иначе ошибка парсинга остаётся невидимой.
+          $code = 99
+          $output = & $legacy -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File $scriptPath -Count 3 -Seconds 5 -PrepareOnly -Language en *>&1
+          foreach ($item in $output) {
+            $text = [string]$item
+            Write-Host $text
+            $lines.Add($text)
+          }
+          $code = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+          Write-Host "Exit code: $code"
+          $lines.Add("EXITCODE=$code")
+          Set-Content -LiteralPath $diag -Value $lines -Encoding UTF8
+
+          # Ожидаемые исходы: 0 — подготовка удалась, 1 — нет сети (контролируемо).
+          if ($code -ne 0 -and $code -ne 1) {
+            Write-Host "::error::Неожиданный код возврата: $code"
+            exit 1
+          }
+          if (-not (Test-Path -LiteralPath './simulator-data')) {
+            Write-Host '::error::Каталог simulator-data не создан'
+            exit 1
+          }
+          $logFiles = @(Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue)
+          if ($logFiles.Count -eq 0) {
+            Write-Host '::error::Журнал run-*.log не создан'
+            exit 1
+          }
+          Write-Host "Журналов создано: $($logFiles.Count)"
+
+      - name: Publish diagnostics on failure
+        if: failure()
+        run: |
+          $diag = @(Get-ChildItem -Path ./simulator-data -Recurse -ErrorAction SilentlyContinue |
+            ForEach-Object { "{0} ({1} bytes)" -f $_.FullName, $_.Length })
+          $logText = @(Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName -Encoding UTF8 }) -join "`n"
+          if (Test-Path -LiteralPath ./smoke-diag.txt) {
+            $logText = (Get-Content -LiteralPath ./smoke-diag.txt -Encoding UTF8 -Raw) + "`n--- файловый журнал ---`n" + $logText
+          }
+          $message = "Файлы: $($diag -join '; ')`n--- журнал ---`n$logText"
+          # %0A и %0D обязательны: многострочная аннотация иначе обрезается.
+          $escaped = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+          Write-Host "::error title=Smoke diagnostics::$escaped"
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs
+          path: simulator-data/**
+          if-no-files-found: ignore

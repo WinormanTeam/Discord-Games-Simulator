@@ -1,0 +1,81 @@
+name: 🐞 Сообщение об ошибке
+description: Скрипт не работает или ведёт себя не так, как описано
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за отчёт! Без версии PowerShell и журнала диагностика занимает
+        гораздо больше времени.
+
+        Перед созданием issue проверьте раздел **«Если что-то пошло не так»** в README.
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Режим запуска
+      options:
+        - Меню (Start.cmd)
+        - Параметры командной строки
+        - -PrepareOnly
+        - -Parallel
+        - Другое
+    validations:
+      required: true
+
+  - type: input
+    id: psversion
+    attributes:
+      label: Версия PowerShell
+      description: 'Вывод: $PSVersionTable.PSVersion'
+      placeholder: '5.1.22621.4249'
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Версия Windows
+      description: 'Win+R → winver'
+      placeholder: 'Windows 11 24H2 (26100)'
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      placeholder: |
+        1. Запустил Start.cmd
+        2. Выбрал пункт [2]
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактическое поведение и текст ошибки
+      description: Скопируйте текст из консоли целиком, не скриншотом, если возможно.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Журнал
+      description: |
+        Приложите файл `simulator-data/logs/run-*.log` (перетащите в это поле).
+        Проверьте, что в нём нет личных данных.
+      render: text
+    validations:
+      required: false

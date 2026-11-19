@@ -1,0 +1,24 @@
+# Рабочие данные симулятора (создаются при запуске)
+simulator-data/
+
+# Артефакты сборки exe-заглушки
+window-placeholder-*.exe
+window-placeholder-*.exe.version
+*.signal
+*.tmp.exe
+
+# Журналы и временные файлы
+*.log
+*.tmp
+*.bak
+
+# Windows
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# PowerShell / редакторы
+.pytest_cache/
+.vscode/
+.idea/
+*.swp
