@@ -1,52 +1,46 @@
 @{
-    # Правила, которые важны для этого проекта.
-    Severity     = @('Error', 'Warning')
+    # ВАЖНО: здесь намеренно НЕТ ключа Severity.
+    # Если Severity задан в файле настроек, он перебивает параметр -Severity
+    # командлета Invoke-ScriptAnalyzer, и разделение «ошибки / предупреждения»
+    # в CI ломается. Уровень задаётся в самом workflow.
 
     IncludeRules = @(
-        'PSAvoidUsingWriteHost'
         'PSAvoidUsingPositionalParameters'
         'PSUseApprovedVerbs'
         'PSUseDeclaredVarsMoreThanAssignments'
-        'PSUseSingularNouns'
         'PSAvoidUsingInvokeExpression'
         'PSAvoidUsingPlainTextForPassword'
+        'PSAvoidGlobalVars'
         'PSUseCompatibleSyntax'
-        'PSUseCompatibleCmdlets'
-        'PSUseCompatibleCommands'
-        'PSUseCompatibleTypes'
         'PSMisleadingBacktick'
-        'PSPlaceOpenBrace'
-        'PSPlaceCloseBrace'
         'PSAvoidTrailingWhitespace'
+        'PSPossibleIncorrectComparisonWithNull'
+        'PSUseOutputTypeCorrectly'
     )
 
     Rules        = @{
         # Write-Host осознанно используется: это интерактивная консольная панель,
-        # а не библиотека с конвейером. Правило отключено с пояснением.
+        # а не библиотека с конвейером. Правило отключено и НЕ включено в
+        # IncludeRules выше (иначе оно включается обратно).
         PSAvoidUsingWriteHost      = @{ Enable = $false }
 
         # Позиционные параметры допустимы только в коротких однострочниках.
         PSAvoidUsingPositionalParameters = @{ Enable = $true }
 
-        # Скрипт должен работать в Windows PowerShell 5.1.
+        # Основной таргет — Windows PowerShell 5.1.
         PSUseCompatibleSyntax      = @{
             Enable         = $true
             TargetVersions = @('5.1', '7.0')
         }
 
-        # Стилевые правила: не блокируем CI из-за них, но фиксируем.
-        PSPlaceOpenBrace           = @{ Enable = $true; OnSameLine = $true; IgnoreOneLineBlock = $true }
-        PSPlaceCloseBrace          = @{ Enable = $true; NewLineAfter = $true; IgnoreOneLineBlock = $true }
-        PSAvoidTrailingWhitespace  = @{ Enable = $true }
-
-        # В CI нет Windows-модулей для полной проверки совместимости cmdlet'ов.
+        # В CI нет Windows-модулей для полной проверки совместимости.
         PSUseCompatibleCmdlets     = @{ Enable = $false }
         PSUseCompatibleCommands    = @{ Enable = $false }
         PSUseCompatibleTypes       = @{ Enable = $false }
     }
 
     ExcludeRules = @(
-        # В репозитории только два корневых скрипта, имена уже согласованы.
+        # В репозитории два корневых скрипта, имена уже согласованы.
         'PSUseSingularNouns'
     )
 }

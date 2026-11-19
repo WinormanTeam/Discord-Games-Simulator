@@ -115,10 +115,29 @@ jobs:
           & .\Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en
           $code = $LASTEXITCODE
           Write-Host "Exit code: $code"
-          # 0 — подготовка удалась; 1 — нет сети/каталога (в CI допустимо).
-          if ($code -ne 0 -and $code -ne 1) { exit 1 }
-          Get-ChildItem -Path .\simulator-data -Recurse -ErrorAction SilentlyContinue |
+          # Ожидаемые исходы в CI:
+          #   0 — подготовка удалась (каталог скачался);
+          #   1 — нет сети/каталога: скрипт обязан упасть контролируемо, не зависнув.
+          if ($code -ne 0 -and $code -ne 1) {
+            Write-Host "::error::Неожиданный код возврата: $code"
+            exit 1
+          }
+
+          # Контракт: каталог данных создан в любом случае.
+          if (-not (Test-Path -LiteralPath './simulator-data')) {
+            Write-Host '::error::Каталог simulator-data не создан'
+            exit 1
+          }
+          Get-ChildItem -Path ./simulator-data -Recurse -ErrorAction SilentlyContinue |
             Select-Object FullName, Length | Format-Table -AutoSize | Out-String | Write-Host
+
+          # Контракт: журнал запуска создан (проверка системы логирования).
+          $logs = @(Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue)
+          if ($logs.Count -eq 0) {
+            Write-Host '::error::Журнал run-*.log не создан'
+            exit 1
+          }
+          Write-Host "Журналов создано: $($logs.Count)" 
 
       - name: Upload logs on failure
         if: failure()
