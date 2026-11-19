@@ -1,4 +1,4 @@
-#requires -Modules Pester
+﻿#requires -Modules Pester
 <#
     Юнит-тесты ядра симулятора.
     Запуск: Invoke-Pester -Path ./tests

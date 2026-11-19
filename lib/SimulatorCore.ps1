@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Чистые (тестируемые) функции ядра Discord Games Simulator.
 
