@@ -111,9 +111,20 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
 
-          # '& ' обязателен: `exit` внутри .ps1 иначе завершит весь шаг.
-          & ./Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en
-          $code = $LASTEXITCODE
+          Write-Host "pwsh: $($PSVersionTable.PSVersion)"
+          Write-Host "Script exists: $(Test-Path -LiteralPath ./Run-Simulator.ps1)"
+
+          # Захватываем ВСЕ потоки: иначе ошибка парсинга остаётся невидимой.
+          $code = 99
+          try {
+            $output = & ./Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en *>&1
+            $output | ForEach-Object { Write-Host $_ }
+            $code = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+          } catch {
+            Write-Host "EXCEPTION: $($_.Exception.GetType().Name): $($_.Exception.Message)"
+            Write-Host "AT: $($_.InvocationInfo.PositionMessage)"
+            $code = 98
+          }
           Write-Host "Exit code: $code"
 
           # Диагностика: журнал — единственный способ понять, что произошло внутри.
