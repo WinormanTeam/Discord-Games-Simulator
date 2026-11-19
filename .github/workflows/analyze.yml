@@ -109,64 +109,48 @@ jobs:
       - name: Prepare files only (windows are NOT launched)
         timeout-minutes: 5
         run: |
+          # Smoke-тест гоняем ТЕМ ЖЕ движком, что и пользователь (5.1),
+          # иначе проверяем не ту среду: Add-Type -OutputType в pwsh 7 не работает.
           $ErrorActionPreference = 'Continue'
-
           Write-Host "pwsh: $($PSVersionTable.PSVersion)"
-          Write-Host "Script exists: $(Test-Path -LiteralPath ./Run-Simulator.ps1)"
 
-          # Захватываем ВСЕ потоки: иначе ошибка парсинга остаётся невидимой.
           $diag = Join-Path $PWD 'smoke-diag.txt'
           $lines = New-Object System.Collections.Generic.List[string]
+          $lines.Add("pwsh: $($PSVersionTable.PSVersion)")
+
+          $legacy = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          if (-not (Test-Path -LiteralPath $legacy)) {
+            Write-Host '::error::Windows PowerShell 5.1 не найден на раннере'
+            exit 1
+          }
+
+          $scriptPath = Join-Path $PWD 'Run-Simulator.ps1'
+          Write-Host "Script exists: $(Test-Path -LiteralPath $scriptPath)"
+
+          # Захватываем все потоки: иначе ошибка парсинга остаётся невидимой.
           $code = 99
-          try {
-            $output = & ./Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en *>&1
-            foreach ($item in $output) {
-              $text = [string]$item
-              Write-Host $text
-              $lines.Add($text)
-            }
-            $code = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-          } catch {
-            $text = 'EXCEPTION: {0}: {1}' -f $_.Exception.GetType().Name, $_.Exception.Message
+          $output = & $legacy -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File $scriptPath -Count 3 -Seconds 5 -PrepareOnly -Language en *>&1
+          foreach ($item in $output) {
+            $text = [string]$item
             Write-Host $text
             $lines.Add($text)
-            $position = [string]$_.InvocationInfo.PositionMessage
-            Write-Host $position
-            $lines.Add($position)
-            $code = 98
           }
+          $code = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
           Write-Host "Exit code: $code"
           $lines.Add("EXITCODE=$code")
           Set-Content -LiteralPath $diag -Value $lines -Encoding UTF8
 
-          # Диагностика: журнал — единственный способ понять, что произошло внутри.
-          Get-ChildItem -Path ./simulator-data -Recurse -ErrorAction SilentlyContinue |
-            Select-Object FullName, Length |
-            Format-Table -AutoSize |
-            Out-String |
-            Write-Host
-
-          $logFiles = @(Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue)
-          foreach ($log in $logFiles) {
-            Write-Host "===== $($log.Name) ====="
-            Get-Content -LiteralPath $log.FullName -Encoding UTF8 | Write-Host
-          }
-
-          # Ожидаемые исходы в CI:
-          #   0 — подготовка удалась (каталог скачался);
-          #   1 — нет сети/каталога: скрипт обязан упасть контролируемо, не зависнув.
+          # Ожидаемые исходы: 0 — подготовка удалась, 1 — нет сети (контролируемо).
           if ($code -ne 0 -and $code -ne 1) {
             Write-Host "::error::Неожиданный код возврата: $code"
             exit 1
           }
-
-          # Контракт: каталог данных создан в любом случае.
           if (-not (Test-Path -LiteralPath './simulator-data')) {
             Write-Host '::error::Каталог simulator-data не создан'
             exit 1
           }
-
-          # Контракт: журнал запуска создан (проверка системы логирования).
+          $logFiles = @(Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue)
           if ($logFiles.Count -eq 0) {
             Write-Host '::error::Журнал run-*.log не создан'
             exit 1

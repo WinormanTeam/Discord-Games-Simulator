@@ -339,12 +339,24 @@ function New-PlaceholderExecutable {
     Write-Host $Messages['BuildingPlaceholder'] -ForegroundColor Cyan
     $source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
 
+    # Add-Type -OutputType поддерживается только в Windows PowerShell 5.1.
+    # В PowerShell 7 сборка в файл не поддерживается вовсе: сообщаем понятно,
+    # а не показываем сырой текст исключения платформы.
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        throw $Messages['NeedWindowsPowerShell']
+    }
+
     # Собираем во временный файл и подменяем только при успехе.
     $tempPath = Join-Path $script:Root ('window-placeholder-' + [guid]::NewGuid().ToString('N') + '.tmp.exe')
     try {
-        Add-Type -TypeDefinition $source `
-            -ReferencedAssemblies 'System.Windows.Forms', 'System.Drawing' `
-            -OutputAssembly $tempPath -OutputType WindowsApplication -ErrorAction Stop
+        try {
+            Add-Type -TypeDefinition $source `
+                -ReferencedAssemblies 'System.Windows.Forms', 'System.Drawing' `
+                -OutputAssembly $tempPath -OutputType WindowsApplication -ErrorAction Stop
+        } catch {
+            Write-Log ('Add-Type failed: ' + $_.Exception.Message) -Level 'ERROR'
+            throw ($Messages['BuildFailed'] -f $_.Exception.Message)
+        }
 
         $tempFile = Get-Item -LiteralPath $tempPath
         if ($tempFile.Length -lt 4096) {

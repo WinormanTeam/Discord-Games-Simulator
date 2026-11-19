@@ -45,6 +45,8 @@ function Initialize-SimulatorMessages {
         # Сообщения
         LoadingCatalog   = 'Загрузка публичного каталога Discord. Вход не требуется.'
         BuildingPlaceholder = 'Сборка exe-заглушки (только при первом запуске или обновлении)...'
+        NeedWindowsPowerShell = 'Сборка exe-заглушки возможна только в Windows PowerShell 5.1. Запустите Start.cmd (он использует powershell.exe) — в PowerShell 7 команда Add-Type с -OutputType не поддерживается.'
+        BuildFailed      = 'Не удалось собрать exe-заглушку: {0}. Проверьте .NET Framework и права на запись в simulator-data.'
         CatalogFromCache = 'Каталог Discord недоступен, использую кэш от {0}.'
         CatalogFromCsv   = 'Использую ранее подготовленный список selected-games.csv.'
         CatalogFailed    = 'Не удалось получить каталог Discord: все попытки исчерпаны.'
@@ -102,6 +104,8 @@ function Initialize-SimulatorMessages {
     $en.RunAnyway        = 'Start? [Y/n]'
     $en.LoadingCatalog   = 'Loading public Discord catalog. No login required.'
     $en.BuildingPlaceholder = 'Building the placeholder exe (first run or after an update)...'
+    $en.NeedWindowsPowerShell = 'The placeholder exe can only be built with Windows PowerShell 5.1. Start Start.cmd (it uses powershell.exe); Add-Type -OutputType is not supported in PowerShell 7.'
+    $en.BuildFailed      = 'Could not build the placeholder exe: {0}. Check .NET Framework and write access to simulator-data.'
     $en.CatalogFromCache = 'Discord catalog unavailable, using cache from {0}.'
     $en.CatalogFromCsv   = 'Using previously prepared selected-games.csv.'
     $en.CatalogFailed    = 'Could not load the Discord catalog: all attempts failed.'
