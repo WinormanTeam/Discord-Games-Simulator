@@ -1,0 +1,19 @@
+# Cmd-скрипты обязаны иметь CRLF, иначе cmd.exe ломается на LF-only строках.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# PowerShell-файлы в этом проекте ориентированы на Windows PowerShell 5.1.
+# Сам PowerShell понимает LF, но CRLF исключает сюрпризы в редакторах и diff.
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+
+# C#-исходник компилируется целиком, переводы строк роли не играют,
+# но фиксируем LF для предсказуемых diff в Linux/CI.
+*.cs text eol=lf
+
+# Бинарные файлы не трогаем при нормализации.
+*.exe binary
+*.zip binary
+*.png binary
+*.jpg binary
