@@ -109,25 +109,26 @@ jobs:
       - name: Prepare files only (windows are NOT launched)
         timeout-minutes: 5
         run: |
-          # Любая необработанная ошибка шага должна попасть в аннотацию PR.
           $ErrorActionPreference = 'Continue'
 
-          # Сеть в CI может быть недоступна: скрипт обязан завершиться
-          # контролируемо (0 или 1), а не зависнуть.
           # '& ' обязателен: `exit` внутри .ps1 иначе завершит весь шаг.
-          & .\Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en
+          & ./Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en
           $code = $LASTEXITCODE
           Write-Host "Exit code: $code"
 
-          # Диагностика: содержимое журнала — единственный способ понять,
-          # что произошло внутри скрипта (логи job из репозитория недоступны).
+          # Диагностика: журнал — единственный способ понять, что произошло внутри.
           Get-ChildItem -Path ./simulator-data -Recurse -ErrorAction SilentlyContinue |
-            Select-Object FullName, Length | Format-Table -AutoSize | Out-String | Write-Host
-          Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue |
-            ForEach-Object {
-              Write-Host "===== $($_.Name) ====="
-              Get-Content -LiteralPath $_.FullName -Encoding UTF8 | Write-Host
-            }"
+            Select-Object FullName, Length |
+            Format-Table -AutoSize |
+            Out-String |
+            Write-Host
+
+          $logFiles = @(Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue)
+          foreach ($log in $logFiles) {
+            Write-Host "===== $($log.Name) ====="
+            Get-Content -LiteralPath $log.FullName -Encoding UTF8 | Write-Host
+          }
+
           # Ожидаемые исходы в CI:
           #   0 — подготовка удалась (каталог скачался);
           #   1 — нет сети/каталога: скрипт обязан упасть контролируемо, не зависнув.
@@ -141,16 +142,13 @@ jobs:
             Write-Host '::error::Каталог simulator-data не создан'
             exit 1
           }
-          Get-ChildItem -Path ./simulator-data -Recurse -ErrorAction SilentlyContinue |
-            Select-Object FullName, Length | Format-Table -AutoSize | Out-String | Write-Host
 
           # Контракт: журнал запуска создан (проверка системы логирования).
-          $logs = @(Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue)
-          if ($logs.Count -eq 0) {
+          if ($logFiles.Count -eq 0) {
             Write-Host '::error::Журнал run-*.log не создан'
             exit 1
           }
-          Write-Host "Журналов создано: $($logs.Count)" 
+          Write-Host "Журналов создано: $($logFiles.Count)"
 
       - name: Publish diagnostics on failure
         if: failure()
