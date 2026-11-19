@@ -109,12 +109,25 @@ jobs:
       - name: Prepare files only (windows are NOT launched)
         timeout-minutes: 5
         run: |
+          # Любая необработанная ошибка шага должна попасть в аннотацию PR.
+          $ErrorActionPreference = 'Continue'
+
           # Сеть в CI может быть недоступна: скрипт обязан завершиться
           # контролируемо (0 или 1), а не зависнуть.
           # '& ' обязателен: `exit` внутри .ps1 иначе завершит весь шаг.
           & .\Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en
           $code = $LASTEXITCODE
           Write-Host "Exit code: $code"
+
+          # Диагностика: содержимое журнала — единственный способ понять,
+          # что произошло внутри скрипта (логи job из репозитория недоступны).
+          Get-ChildItem -Path ./simulator-data -Recurse -ErrorAction SilentlyContinue |
+            Select-Object FullName, Length | Format-Table -AutoSize | Out-String | Write-Host
+          Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              Write-Host "===== $($_.Name) ====="
+              Get-Content -LiteralPath $_.FullName -Encoding UTF8 | Write-Host
+            }"
           # Ожидаемые исходы в CI:
           #   0 — подготовка удалась (каталог скачался);
           #   1 — нет сети/каталога: скрипт обязан упасть контролируемо, не зависнув.
@@ -139,10 +152,22 @@ jobs:
           }
           Write-Host "Журналов создано: $($logs.Count)" 
 
+      - name: Publish diagnostics on failure
+        if: failure()
+        run: |
+          $diag = @(Get-ChildItem -Path ./simulator-data -Recurse -ErrorAction SilentlyContinue |
+            ForEach-Object { "{0} ({1} bytes)" -f $_.FullName, $_.Length })
+          $logText = @(Get-ChildItem -Path ./simulator-data/logs -Filter '*.log' -ErrorAction SilentlyContinue |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName -Encoding UTF8 }) -join "`n"
+          $message = "Файлы: $($diag -join '; ')`n--- журнал ---`n$logText"
+          # %0A и %0D обязательны: многострочная аннотация иначе обрезается.
+          $escaped = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+          Write-Host "::error title=Smoke diagnostics::$escaped"
+
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-logs
-          path: simulator-data/logs/**
+          path: simulator-data/**
           if-no-files-found: ignore
