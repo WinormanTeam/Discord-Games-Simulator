@@ -175,6 +175,12 @@ Describe 'ConvertTo-SafeFileComponent' {
 
     It 'не оставляет хвостовых точек и пробелов' {
         ConvertTo-SafeFileComponent -Name 'Game...' | Should -Be 'Game'
+        ConvertTo-SafeFileComponent -Name 'Game . . ' | Should -Be 'Game'
+    }
+
+    It 'сохраняет точки внутри имени (регрессия: раньше все точки менялись на дефис)' {
+        ConvertTo-SafeFileComponent -Name 'my.game' | Should -Be 'my.game'
+        ConvertTo-SafeFileComponent -Name 'v1.2 game' | Should -Be 'v1.2 game'
     }
 
     It 'возвращает заглушку для пустой строки' {
@@ -206,8 +212,14 @@ Describe 'New-PlaceholderArguments' {
 
     It 'вырезает кавычки из заголовка (иначе ломается argv)' {
         $args = New-PlaceholderArguments -Seconds 5 -Title 'Bad "Quoted" Game'
-        $args[1] | Should -Not -Match '"Bad'
+        # Внутри одного аргумента не должно остаться ни одной кавычки.
+        ($args[1].Trim('"') -match '"') | Should -BeFalse
         $args[1] | Should -Be '"Bad Quoted Game"'
+    }
+
+    It 'вырезает одинарные кавычки из заголовка' {
+        $args = New-PlaceholderArguments -Seconds 5 -Title "Bob's Game"
+        ($args[1].Trim('"') -match "'") | Should -BeFalse
     }
 }
 

@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: pwsh
+
 jobs:
   pester:
     name: Pester (${{ matrix.os }})
@@ -23,13 +27,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Pester
-        shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser -SkipPublisherCheck
 
       - name: Run unit tests
-        shell: pwsh
         run: |
           $config = New-PesterConfiguration
           $config.Run.Path = './tests'
@@ -44,25 +46,44 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install PSScriptAnalyzer
-        shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
 
       - name: Analyze
-        shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse `
-            -Settings ./PSScriptAnalyzerSettings.psd1 `
-            -Severity Error, Warning
-          $results | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
-          if (@($results).Count -gt 0) {
-            Write-Host "::error::PSScriptAnalyzer нашёл $(@($results).Count) проблем(ы)."
-            exit 1
+          # Предупреждения печатаем и складываем в summary, но блокируем PR
+          # только на ошибках: стилевые замечания не должны останавливать работу.
+          $warnings = @(Invoke-ScriptAnalyzer -Path . -Recurse `
+              -Settings ./PSScriptAnalyzerSettings.psd1 `
+              -Severity Warning)
+
+          # Печатаем всё в лог: без этого невозможно понять, что именно чинить.
+          $warnings |
+            Select-Object RuleName, Severity, Line, Column, Message, ScriptName |
+            Sort-Object ScriptName, Line |
+            Format-Table -AutoSize -Wrap |
+            Out-String -Width 200 |
+            Write-Host
+
+          # И в Job Summary, чтобы отчёт был виден прямо в PR.
+          $summary = "`n### PSScriptAnalyzer: $($warnings.Count) замечаний`n`n" +
+            (($warnings | Group-Object RuleName |
+              ForEach-Object { "- **$($_.Name)** — $($_.Count)" }) -join "`n")
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
+
+          # Блокирующий гейт — только ошибки уровня Error.
+          $errors = @(Invoke-ScriptAnalyzer -Path . -Recurse `
+              -Settings ./PSScriptAnalyzerSettings.psd1 `
+              -Severity Error)
+          foreach ($e in $errors) {
+            Write-Host ("::error file={0},line={1},col={2}::{3} ({4})" -f `
+                $e.ScriptName, $e.Line, $e.Column, $e.Message, $e.RuleName)
           }
+          Write-Host "Ошибок: $($errors.Count); предупреждений: $($warnings.Count)"
+          if ($errors.Count -gt 0) { exit 1 }
 
       - name: Syntax check (native parser)
-        shell: pwsh
         run: |
           $failed = 0
           $files = Get-ChildItem -Path . -Recurse -Include *.ps1, *.psm1 |
@@ -86,15 +107,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Prepare files only (windows are NOT launched)
-        shell: pwsh
         timeout-minutes: 5
         run: |
           # Сеть в CI может быть недоступна: скрипт обязан завершиться
           # контролируемо (0 или 1), а не зависнуть.
-          .\Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en
+          # '& ' обязателен: `exit` внутри .ps1 иначе завершит весь шаг.
+          & .\Run-Simulator.ps1 -Count 3 -Seconds 5 -PrepareOnly -Language en
           $code = $LASTEXITCODE
           Write-Host "Exit code: $code"
+          # 0 — подготовка удалась; 1 — нет сети/каталога (в CI допустимо).
           if ($code -ne 0 -and $code -ne 1) { exit 1 }
+          Get-ChildItem -Path .\simulator-data -Recurse -ErrorAction SilentlyContinue |
+            Select-Object FullName, Length | Format-Table -AutoSize | Out-String | Write-Host
 
       - name: Upload logs on failure
         if: failure()

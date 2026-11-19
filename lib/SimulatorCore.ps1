@@ -166,8 +166,8 @@ function ConvertTo-SafeFileComponent {
 
     if ([string]::IsNullOrWhiteSpace($Name)) { return 'game' }
 
+    # Точки внутри имени допустимы; опасны только хвостовые (Windows их отбрасывает).
     $safe = $Name -replace '[\\/:*?"<>|]', '-'
-    $safe = $safe -replace '\.', '-'
     $safe = $safe -replace '\s+', ' '
     $safe = $safe.Trim().TrimEnd('.', ' ')
     if ($safe.Length -gt $MaxLength) {
@@ -484,15 +484,28 @@ function Read-CompletedGames {
 
     foreach ($row in $rows) {
         if ($null -eq $row) { continue }
-        $status = [string]$row.status
+
+        $status = [string](Get-SafeProperty -Object $row -Name 'status' -Default '')
         # Успехом считаем только строки, начинающиеся с ожидаемого префикса.
         if (-not $status.StartsWith($SuccessStatusPrefix)) { continue }
-        $time = $null
-        if (-not [DateTime]::TryParse([string]$row.time, [ref]$time)) { continue }
-        if ($time -lt $cutoff) { continue }
-        if (-not [string]::IsNullOrWhiteSpace([string]$row.game)) {
-            $result.Add([string]$row.game)
+
+        # ВАЖНО: [ref] требует инициализированную переменную нужного типа,
+        # иначе TryParse падает на преобразовании аргумента.
+        $time = [datetime]::MinValue
+        $parsed = $false
+        try {
+            $parsed = [DateTime]::TryParse([string](Get-SafeProperty -Object $row -Name 'time' -Default ''),
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::None,
+                [ref]$time)
+        } catch {
+            $parsed = $false
         }
+        if (-not $parsed) { continue }
+        if ($time -lt $cutoff) { continue }
+
+        $game = [string](Get-SafeProperty -Object $row -Name 'game' -Default '')
+        if (-not [string]::IsNullOrWhiteSpace($game)) { $result.Add($game) }
     }
 
     return $result.ToArray()
